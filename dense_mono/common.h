@@ -1,6 +1,35 @@
 #ifndef COMMON_DM_HEADER
 #define COMMON_DM_HEADER
 
+
+
+//typedefs
+
+#define USE_FLOAT_TYPE
+#ifdef USE_FLOAT_TYPE
+typedef float FLOAT_T;
+typedef SE3f SE3_T;
+typedef Eigen::Matrix2f EigenMatrix2;
+typedef Eigen::Vector3f EigenVector3;
+typedef Eigen::Vector2f EigenVector2;
+#define CV_FLOAT_TYPE CV_32F
+#else
+typedef double FLOAT_T;
+typedef SE3d SE3_T;
+typedef Eigen::Matrix2d EigenMatrix2;
+typedef Eigen::Vector3d EigenVector3;
+typedef Eigen::Vector2d EigenVector2;
+#define CV_FLOAT_TYPE CV_64F
+#endif
+
+
+
+
+
+
+
+
+
 // parameters
 const int boarder = 20;         // 边缘宽度
 const int width = 640;          // 图像宽度
@@ -16,8 +45,9 @@ const double max_cov = 10;      // 发散判定：最大方差
 
 
 // 像素到相机坐标系
-inline Vector3d px2cam(const Vector2d px) {
-    return Vector3d(
+
+inline EigenVector3 px2cam(const EigenVector2 px) {
+    return EigenVector3(
         (px(0, 0) - cx) / fx,
         (px(1, 0) - cy) / fy,
         1
@@ -25,15 +55,15 @@ inline Vector3d px2cam(const Vector2d px) {
 }
 
 // 相机坐标系到像素
-inline Vector2d cam2px(const Vector3d p_cam) {
-    return Vector2d(
+inline EigenVector2 cam2px(const EigenVector3 p_cam) {
+    return EigenVector2(
         p_cam(0, 0) * fx / p_cam(2, 0) + cx,
         p_cam(1, 0) * fy / p_cam(2, 0) + cy
     );
 }
 
 // 检测一个点是否在图像边框内
-inline bool inside(const Vector2d &pt) {
+inline bool inside(const EigenVector2 &pt) {
     return pt(0, 0) >= boarder && pt(1, 0) >= boarder
            && pt(0, 0) + boarder < width && pt(1, 0) + boarder <= height;
 }
@@ -41,7 +71,7 @@ inline bool inside(const Vector2d &pt) {
 bool readDatasetFiles(
     const string &path,
     vector<string> &color_image_files,
-    vector<SE3d> &poses,
+    vector<SE3_T> &poses,
     cv::Mat &ref_depth
 );
 
@@ -50,7 +80,7 @@ bool readDatasetFiles(
 bool readDatasetFiles(
     const string &path,
     vector<string> &color_image_files,
-    std::vector<SE3d> &poses,
+    std::vector<SE3_T> &poses,
     cv::Mat &ref_depth) {
     ifstream fin(path + "/first_200_frames_traj_over_table_input_sequence.txt");
     if (!fin) return false;
@@ -64,8 +94,8 @@ bool readDatasetFiles(
 
         color_image_files.push_back(path + string("/images/") + image);
         poses.push_back(
-            SE3d(Quaterniond(data[6], data[3], data[4], data[5]),
-                 Vector3d(data[0], data[1], data[2]))
+            SE3_T(Quaternionf(data[6], data[3], data[4], data[5]),
+                 EigenVector3(data[0], data[1], data[2]))
         );
         if (!fin.good()) break;
     }
@@ -73,13 +103,13 @@ bool readDatasetFiles(
 
     // load reference depth
     fin.open(path + "/depthmaps/scene_000.depth");
-    ref_depth = cv::Mat(height, width, CV_64F);
+    ref_depth = cv::Mat(height, width, CV_FLOAT_TYPE);
     if (!fin) return false;
     for (int y = 0; y < height; y++)
         for (int x = 0; x < width; x++) {
-            double depth = 0;
+            FLOAT_T depth = 0;
             fin >> depth;
-            ref_depth.ptr<double>(y)[x] = depth / 100.0;
+            ref_depth.ptr<FLOAT_T>(y)[x] = depth / 100.0;
         }
 
     return true;
@@ -96,12 +126,12 @@ void plotDepth(const Mat &depth_truth, const Mat &depth_estimate) {
 }
 
 void evaludateDepth(const Mat &depth_truth, const Mat &depth_estimate) {
-    double ave_depth_error = 0;     // 平均误差
-    double ave_depth_error_sq = 0;      // 平方误差
+    FLOAT_T ave_depth_error = 0;     // 平均误差
+    FLOAT_T ave_depth_error_sq = 0;      // 平方误差
     int cnt_depth_data = 0;
     for (int y = boarder; y < depth_truth.rows - boarder; y++)
         for (int x = boarder; x < depth_truth.cols - boarder; x++) {
-            double error = depth_truth.ptr<double>(y)[x] - depth_estimate.ptr<double>(y)[x];
+            double error = depth_truth.ptr<FLOAT_T>(y)[x] - depth_estimate.ptr<FLOAT_T>(y)[x];
             ave_depth_error += error;
             ave_depth_error_sq += error * error;
             cnt_depth_data++;
