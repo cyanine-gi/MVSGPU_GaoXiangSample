@@ -1,49 +1,8 @@
-#ifndef COMMON_DM_HEADER
-#define COMMON_DM_HEADER
+#ifndef COMMON_DM_HEADER_FILE
+#define COMMON_DM_HEADER_FILE
 
 
-
-//typedefs
-
-#define USE_FLOAT_TYPE
-#ifdef USE_FLOAT_TYPE
-typedef float FLOAT_T;
-typedef SE3f SE3_T;
-typedef Eigen::Matrix2f EigenMatrix2;
-typedef Eigen::Vector3f EigenVector3;
-typedef Eigen::Vector2f EigenVector2;
-#define CV_FLOAT_TYPE CV_32F
-#else
-typedef double FLOAT_T;
-typedef SE3d SE3_T;
-typedef Eigen::Matrix2d EigenMatrix2;
-typedef Eigen::Vector3d EigenVector3;
-typedef Eigen::Vector2d EigenVector2;
-#define CV_FLOAT_TYPE CV_64F
-#endif
-
-
-
-
-
-
-
-
-
-// parameters
-const int boarder = 20;         // 边缘宽度
-const int width = 640;          // 图像宽度
-const int height = 480;         // 图像高度
-const double fx = 481.2f;       // 相机内参
-const double fy = -480.0f;
-const double cx = 319.5f;
-const double cy = 239.5f;
-const int ncc_window_size = 3;    // NCC 取的窗口半宽度
-const int ncc_area = (2 * ncc_window_size + 1) * (2 * ncc_window_size + 1); // NCC窗口面积
-const double min_cov = 0.1;     // 收敛判定：最小方差
-const double max_cov = 10;      // 发散判定：最大方差
-
-
+#include "typedefs_and_consts.h"
 // 像素到相机坐标系
 
 inline EigenVector3 px2cam(const EigenVector2 px) {
@@ -114,14 +73,51 @@ bool readDatasetFiles(
 
     return true;
 }
+bool readGeneratedDatasetFiles(
+    const string &path,
+    vector<string> &color_image_files,
+    std::vector<SE3_T> &poses,
+    cv::Mat &ref_depth) {
+    ifstream fin(path + "/record.txt");
+    if (!fin) return false;
+
+    while (!fin.eof()) {
+        // 数据格式：图像文件名 tx, ty, tz, qx, qy, qz, qw ，注意是 TWC 而非 TCW
+        string image;
+        fin >> image;
+        double data[7];
+        for (double &d:data) fin >> d;
+
+        color_image_files.push_back(image);
+        poses.push_back(
+            SE3_T(Quaternionf(data[6], data[3], data[4], data[5]),
+                 EigenVector3(data[0], data[1], data[2])).inverse()
+        );
+        if (!fin.good()) break;
+    }
+    fin.close();
+
+    // load reference depth
+//    fin.open(path + "/depthmaps/scene_000.depth");
+//    ref_depth = cv::Mat(height, width, CV_FLOAT_TYPE);
+//    if (!fin) return false;
+//    for (int y = 0; y < height; y++)
+//        for (int x = 0; x < width; x++) {
+//            FLOAT_T depth = 0;
+//            fin >> depth;
+//            ref_depth.ptr<FLOAT_T>(y)[x] = depth / 100.0;
+//        }
+
+    return true;
+}
 // 后面这些太简单我就不注释了（其实是因为懒）
 using cv::Mat;
 using cv::imshow;
 using cv::waitKey;
 void plotDepth(const Mat &depth_truth, const Mat &depth_estimate) {
-    imshow("depth_truth", depth_truth * 0.4);
-    imshow("depth_estimate", depth_estimate * 0.4);
-    imshow("depth_error", depth_truth - depth_estimate);
+    //imshow("depth_truth", depth_truth * 0.4);
+    imshow("depth_estimate", depth_estimate * 0.1);
+    //imshow("depth_error", depth_truth - depth_estimate);
     waitKey(1);
 }
 
@@ -141,4 +137,13 @@ void evaludateDepth(const Mat &depth_truth, const Mat &depth_estimate) {
 
     cout << "Average squared error = " << ave_depth_error_sq << ", average error: " << ave_depth_error << endl;
 }
+
+
+
+
+
 #endif
+
+
+
+

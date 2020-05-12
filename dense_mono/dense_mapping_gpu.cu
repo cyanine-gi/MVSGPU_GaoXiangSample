@@ -50,6 +50,7 @@ using cv::cuda::HostMem;
 using cv::Mat;
 using cv::cuda::PtrStepSz;
 
+#include "generate_ply.h"
 
 
 __device__ __forceinline__  EigenVector3 px2cam_gpu(const EigenVector2 px) {
@@ -205,7 +206,7 @@ __device__ bool epipolarSearch_gpu(
         }
     }
     debug_mat((int)pt_ref(1,0),(int)pt_ref(0,0)) = best_ncc;
-    if (best_ncc < 0.85f)      // 只相信 NCC 很高的匹配
+    if (best_ncc < 0.90f)      // 只相信 NCC 很高的匹配 //0.85
     {
         return false;
     }
@@ -418,6 +419,66 @@ void update_kernel_wrapper_cpu( Mat& ref,Mat& curr,SE3_T T_C_R,Mat& depth,Mat& d
 //    debug_mat_gpu.release();
 }
 
+//#include "happly/happly.h"
+//typedef std::array<double,3> P3d_PLY_T;
+//inline void getXYZbyUVDepth(//const double& fx,const double& fy,const double& cx,const double& cy,
+//                const double &depth,
+//                const double& u,const double& v,
+//                double& x,double& y,double& z)
+//{
+//    Eigen::Vector3d v_((x-cx)/fx,(y-cy)/fy,1);
+//    v_.normalize();
+//    v_*=depth;
+//    x = v_[0];
+//    y = v_[1];
+//    z = v_[2];
+//}
+
+//void dump_ply(const Mat& depth_estimate,const Mat& depth_cov2,const Mat& original_img,std::string ply_output_path)
+//{
+//    //write a PLY.
+
+//    vector<P3d_PLY_T> vVertices;
+
+//    for (int v = 0; v < original_img.rows; v++)
+//    {
+//        for (int u = 0; u < original_img.cols; u++)
+//        {
+
+//            if(depth_cov2.at<FLOAT_T>(v,u) <= min_cov*15)//填充成功的点.
+//            {
+//                P3d_PLY_T pt;
+//                double x_3d,y_3d,z_3d,depth_3d;
+//                depth_3d = depth_estimate.at<FLOAT_T>(v,u);
+//                if(z_3d >1000||z_3d<0)
+//                {
+//                    continue;
+//                }
+//                getXYZbyUVDepth(depth_3d,
+//                                          u,v,
+//                                          x_3d,y_3d,z_3d);
+//                if(isnan(x_3d)||isnan(y_3d)||isnan(z_3d) ||
+//                        isinf(x_3d)||isinf(y_3d)||isinf(z_3d) )
+//                {
+//                    continue;
+//                }
+//                pt[0] = x_3d*100;pt[1] = y_3d*100;pt[2] = z_3d*100;
+//                vVertices.push_back(pt);
+//                cout<<"uv:"<<u<<","<<v<<endl;
+//            }
+//        }
+//    }
+//    happly::PLYData plyOut;
+//    // Add mesh data (elements are created automatically)
+//    //LOG(INFO)<<"Writing ply with "<<vVertices.size()<<"vertices and "<<vTriangleIDs.size()<<"triangles."<<endl;
+//    plyOut.addVertexPositions(vVertices);
+//    //plyOut.addVertexColors(vVertexColors);
+//    //plyOut.addFaceIndices(vTriangleIDs);
+
+//    // Write the object to file
+//    plyOut.write("mesh.ply", happly::DataFormat::ASCII);
+//    //pcl::io::savePLYFile("mesh.ply",output_cloud);
+//}
 
 int main(int argc, char **argv) {
     if (argc != 2) {
@@ -431,7 +492,8 @@ int main(int argc, char **argv) {
     vector<string> color_image_files;
     vector<SE3_T> poses_TWC;
     Mat ref_depth;
-    bool ret = readDatasetFiles(argv[1], color_image_files, poses_TWC, ref_depth);
+    //bool ret = readDatasetFiles(argv[1], color_image_files, poses_TWC, ref_depth);
+    bool ret = readGeneratedDatasetFiles(argv[1], color_image_files, poses_TWC, ref_depth);
     if (ret == false) {
         cout << "Reading image files failed!" << endl;
         return -1;
@@ -449,21 +511,24 @@ int main(int argc, char **argv) {
 
     initGpuMats(depth);
 
-    for (int index = 1; index < color_image_files.size(); index++) {
+    //for (int index = 1; index < color_image_files.size(); index++) {
+    for (int index = 1; index < 50; index++) {
         cout << "*** loop " << index << " ***" << endl;
         Mat curr = cv::imread(color_image_files[index], 0);
         if (curr.data == nullptr) continue;
         SE3_T pose_curr_TWC = poses_TWC[index];
         SE3_T pose_T_C_R = pose_curr_TWC.inverse() * pose_ref_TWC;   // 坐标转换关系： T_C_W * T_W_R = T_C_R
         update_kernel_wrapper_cpu(ref, curr, pose_T_C_R, depth, depth_cov2);
-        evaludateDepth(ref_depth, depth);
+        //evaludateDepth(ref_depth, depth);
         plotDepth(ref_depth, depth);
         imshow("image", curr);
-        waitKey(1);
+        waitKey(100);
     }
 
     cout << "estimation returns, saving depth map ..." << endl;
     imwrite("depth.png", depth);
+    imwrite("depth_cov2.png",depth_cov2);
+    dump_ply(depth,depth_cov2,ref,"mesh.ply");
     cout << "done." << endl;
     cudaProfilerStop();
 
